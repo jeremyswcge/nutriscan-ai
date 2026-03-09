@@ -26,7 +26,8 @@ import {
   Beef,
   Wheat,
   Droplets,
-  Calendar
+  Calendar,
+  ScanBarcode
 } from 'lucide-react';
 import { 
   signInWithPopup, 
@@ -50,8 +51,9 @@ import {
   deleteDoc
 } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { UserProfile, Meal, NutritionAnalysis, Ingredient } from './types';
+import { UserProfile, Meal, NutritionAnalysis, Ingredient, ScannedProduct } from './types';
 import { analyzeFoodImage } from './services/geminiService';
+import { lookupBarcode } from './services/barcodeService';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   PieChart, 
@@ -165,10 +167,10 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 const NutriScoreBadge = ({ score }: { score: number }) => {
   const getScoreInfo = (s: number) => {
-    if (s >= 80) return { label: 'Excellent', color: 'bg-emerald-500', emoji: '🟢' };
-    if (s >= 60) return { label: 'Bon', color: 'bg-yellow-400', emoji: '🟡' };
-    if (s >= 40) return { label: 'Moyen', color: 'bg-orange-500', emoji: '🟠' };
-    return { label: 'Mauvais', color: 'bg-red-500', emoji: '🔴' };
+    if (s >= 80) return { label: 'Excellent', color: 'bg-emerald-500', emoji: 'ð¢' };
+    if (s >= 60) return { label: 'Bon', color: 'bg-yellow-400', emoji: 'ð¡' };
+    if (s >= 40) return { label: 'Moyen', color: 'bg-orange-500', emoji: 'ð ' };
+    return { label: 'Mauvais', color: 'bg-red-500', emoji: 'ð´' };
   };
 
   const info = getScoreInfo(score);
@@ -198,7 +200,7 @@ const IngredientCard = ({ ingredient, onDelete }: { ingredient: Ingredient, onDe
       <div className="flex-1">
         <h5 className="font-bold text-zinc-900">{ingredient.name}</h5>
         <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">
-          {ingredient.quantity}g • {ingredient.calories} kcal • P: {ingredient.protein}g • C: {ingredient.carbs}g • F: {ingredient.fat}g
+          {ingredient.quantity}g â¢ {ingredient.calories} kcal â¢ P: {ingredient.protein}g â¢ C: {ingredient.carbs}g â¢ F: {ingredient.fat}g
         </p>
       </div>
       <button onClick={onDelete} className="p-2 text-zinc-300 hover:text-red-500 transition-colors">
@@ -249,7 +251,7 @@ const MealCard = ({ meal }: { meal: Meal }) => {
       </div>
       <div className="flex-1 min-w-0">
         <h4 className="font-bold text-zinc-900 truncate">{meal.name}</h4>
-        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {meal.type}</p>
+        <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} â¢ {meal.type}</p>
       </div>
       <div className="text-right">
         <p className="text-xl font-black text-zinc-900">{meal.calories}</p>
@@ -280,6 +282,15 @@ function NutriScanApp() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [mealType, setMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('lunch');
+  // Barcode Scanner State
+  const [isScanningBarcode, setIsScanningBarcode] = useState(false);
+  const [scannedProduct, setScannedProduct] = useState<ScannedProduct | null>(null);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
+  const [productError, setProductError] = useState<string | null>(null);
+  const [manualBarcodeInput, setManualBarcodeInput] = useState('');
+  const barcodeVideoRef = useRef<HTMLVideoElement>(null);
+  const barcodeStreamRef = useRef<MediaStream | null>(null);
+  const barcodeScanRef = useRef<number | null>(null);
   
   // Manual Ingredient State
   const [isAddingIngredient, setIsAddingIngredient] = useState(false);
@@ -467,10 +478,10 @@ function NutriScanApp() {
   };
 
   const getScoreTip = (score: number, ingredients: Ingredient[]) => {
-    if (score >= 80) return "Excellent choix ! Ce repas est très équilibré.";
-    if (ingredients.some(i => i.score === 'red')) return "Attention aux sucres ou graisses saturées détectés.";
-    if (score < 40) return "Repas très déséquilibré, essayez d'ajouter des fibres.";
-    return "Bon repas, mais pourrait être plus équilibré.";
+    if (score >= 80) return "Excellent choix ! Ce repas est trÃ¨s Ã©quilibrÃ©.";
+    if (ingredients.some(i => i.score === 'red')) return "Attention aux sucres ou graisses saturÃ©es dÃ©tectÃ©s.";
+    if (score < 40) return "Repas trÃ¨s dÃ©sÃ©quilibrÃ©, essayez d'ajouter des fibres.";
+    return "Bon repas, mais pourrait Ãªtre plus Ã©quilibrÃ©.";
   };
 
   const saveMeal = async () => {
@@ -501,6 +512,86 @@ function NutriScanApp() {
       setAnalysis(null);
       setCapturedImage(null);
       setCurrentIngredients([]);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'meals');
+    }
+  };
+
+  // Barcode Scanner Functions
+  const startBarcodeScanner = async () => {
+    setIsScanningBarcode(true);
+    setScannedProduct(null);
+    setProductError(null);
+    setManualBarcodeInput('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      barcodeStreamRef.current = stream;
+      if (barcodeVideoRef.current) {
+        barcodeVideoRef.current.srcObject = stream;
+        await barcodeVideoRef.current.play();
+      }
+      if ('BarcodeDetector' in window) {
+        const detector = new (window as any).BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] });
+        const scan = async () => {
+          if (!barcodeVideoRef.current || barcodeVideoRef.current.readyState < 2) {
+            barcodeScanRef.current = requestAnimationFrame(scan);
+            return;
+          }
+          try {
+            const barcodes = await detector.detect(barcodeVideoRef.current);
+            if (barcodes.length > 0) { handleBarcodeDetected(barcodes[0].rawValue); return; }
+          } catch {}
+          barcodeScanRef.current = requestAnimationFrame(scan);
+        };
+        barcodeScanRef.current = requestAnimationFrame(scan);
+      }
+    } catch {
+      setProductError("Impossible d'accéder à la caméra");
+    }
+  };
+
+  const stopBarcodeScanner = () => {
+    if (barcodeScanRef.current) cancelAnimationFrame(barcodeScanRef.current);
+    if (barcodeStreamRef.current) barcodeStreamRef.current.getTracks().forEach(t => t.stop());
+    barcodeStreamRef.current = null;
+    setIsScanningBarcode(false);
+    setScannedProduct(null);
+    setProductError(null);
+    setManualBarcodeInput('');
+  };
+
+  const handleBarcodeDetected = async (barcode: string) => {
+    if (barcodeScanRef.current) cancelAnimationFrame(barcodeScanRef.current);
+    if (barcodeStreamRef.current) barcodeStreamRef.current.getTracks().forEach(t => t.stop());
+    barcodeStreamRef.current = null;
+    setIsLoadingProduct(true);
+    setProductError(null);
+    try {
+      const product = await lookupBarcode(barcode);
+      setScannedProduct(product);
+    } catch (err: any) {
+      setProductError(err.message || 'Produit introuvable');
+    } finally {
+      setIsLoadingProduct(false);
+    }
+  };
+
+  const addScannedProductToMeals = async () => {
+    if (!scannedProduct || !user) return;
+    const meal = {
+      uid: user.uid,
+      name: scannedProduct.name,
+      calories: scannedProduct.calories,
+      protein: scannedProduct.protein,
+      carbs: scannedProduct.carbs,
+      fat: scannedProduct.fat,
+      imageUrl: scannedProduct.imageUrl || '',
+      timestamp: serverTimestamp(),
+      type: mealType,
+    };
+    try {
+      await addDoc(collection(db, 'meals'), meal);
+      stopBarcodeScanner();
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'meals');
     }
@@ -609,22 +700,22 @@ function NutriScanApp() {
             {/* Macros Grid */}
             <div className="bg-white/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/60 shadow-xl space-y-8">
               <ProgressBar 
-                label="Protéines" 
-                emoji="🥩"
+                label="ProtÃ©ines" 
+                emoji="ð¥©"
                 value={totals.protein} 
                 max={profile?.dailyProteinGoal || 150} 
                 color="bg-gradient-to-r from-emerald-400 to-teal-500" 
               />
               <ProgressBar 
                 label="Glucides" 
-                emoji="🌾"
+                emoji="ð¾"
                 value={totals.carbs} 
                 max={profile?.dailyCarbsGoal || 200} 
                 color="bg-gradient-to-r from-blue-400 to-indigo-500" 
               />
               <ProgressBar 
                 label="Lipides" 
-                emoji="💧"
+                emoji="ð§"
                 value={totals.fat} 
                 max={profile?.dailyFatGoal || 70} 
                 color="bg-gradient-to-r from-amber-400 to-orange-500" 
@@ -634,7 +725,7 @@ function NutriScanApp() {
             {/* Recent Meals */}
             <div className="space-y-4">
               <div className="flex justify-between items-center px-1">
-                <h3 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">Repas récents</h3>
+                <h3 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">Repas rÃ©cents</h3>
                 <button onClick={() => setActiveTab('history')} className="text-zinc-500 hover:text-zinc-900 transition-colors">
                   <ChevronRight size={20} />
                 </button>
@@ -675,7 +766,7 @@ function NutriScanApp() {
               ) : (
                 <div className="py-20 text-center bg-white/40 backdrop-blur-sm border-2 border-dashed border-white/60 rounded-[2.5rem]">
                   <History className="mx-auto text-zinc-300 mb-4" size={48} />
-                  <p className="text-zinc-500 font-bold">Aucun repas enregistré</p>
+                  <p className="text-zinc-500 font-bold">Aucun repas enregistrÃ©</p>
                 </div>
               )}
             </div>
@@ -688,7 +779,7 @@ function NutriScanApp() {
             animate={{ opacity: 1, x: 0 }}
             className="space-y-8"
           >
-            <h3 className="text-3xl font-black text-zinc-900">Réglages</h3>
+            <h3 className="text-3xl font-black text-zinc-900">RÃ©glages</h3>
             
             <div className="bg-white/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/60 shadow-xl space-y-8">
               <div className="flex items-center gap-4">
@@ -712,7 +803,7 @@ function NutriScanApp() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Protéines (g)</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">ProtÃ©ines (g)</label>
                     <input 
                       type="number" 
                       value={profile?.dailyProteinGoal}
@@ -760,13 +851,22 @@ function NutriScanApp() {
                   className="w-full bg-red-50 text-red-500 font-black py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-red-100 transition-all"
                 >
                   <LogOut size={20} />
-                  Se déconnecter
+                  Se dÃ©connecter
                 </button>
               </div>
             </div>
           </motion.div>
         )}
       </main>
+
+      {/* Barcode Scanner Button */}
+      <motion.button
+        whileTap={{ scale: 0.92 }}
+        onClick={startBarcodeScanner}
+        className="fixed bottom-28 left-6 w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-lg z-40"
+      >
+        <ScanBarcode className="w-6 h-6" />
+      </motion.button>
 
       {/* Floating Add Button */}
       <button 
@@ -810,6 +910,123 @@ function NutriScanApp() {
           </button>
         </div>
       </nav>
+
+      {/* Barcode Scanner Overlay */}
+      <AnimatePresence>
+        {isScanningBarcode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black flex flex-col"
+          >
+            <div className="flex items-center justify-between p-4 bg-black/80">
+              <button onClick={stopBarcodeScanner} className="text-white p-2"><X className="w-6 h-6" /></button>
+              <h2 className="text-white font-semibold text-lg">Scanner un produit</h2>
+              <div className="w-10" />
+            </div>
+
+            {!scannedProduct && !isLoadingProduct && (
+              <div className="flex-1 relative overflow-hidden">
+                <video ref={barcodeVideoRef} className="w-full h-full object-cover" muted playsInline />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-64 h-32 relative">
+                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-violet-400 rounded-tl-lg" />
+                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-violet-400 rounded-tr-lg" />
+                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-violet-400 rounded-bl-lg" />
+                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-violet-400 rounded-br-lg" />
+                    <motion.div animate={{ top: ['10%','90%','10%'] }} transition={{ duration: 2, repeat: Infinity }} className="absolute left-0 right-0 h-0.5 bg-violet-400 opacity-80" />
+                  </div>
+                </div>
+                <p className="absolute bottom-4 left-0 right-0 text-center text-white/80 text-sm">Pointez vers un code-barres</p>
+              </div>
+            )}
+
+            {isLoadingProduct && (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center text-white">
+                  <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-violet-400" />
+                  <p>Recherche du produit...</p>
+                </div>
+              </div>
+            )}
+
+            {scannedProduct && (
+              <div className="flex-1 overflow-y-auto bg-gray-900 p-4">
+                <div className="max-w-sm mx-auto">
+                  <div className="flex items-center gap-4 mb-6">
+                    {scannedProduct.imageUrl ? (
+                      <img src={scannedProduct.imageUrl} alt={scannedProduct.name} className="w-20 h-20 object-contain rounded-2xl bg-white p-1" />
+                    ) : (
+                      <div className="w-20 h-20 rounded-2xl bg-white/10 flex items-center justify-center"><Apple className="w-10 h-10 text-white/40" /></div>
+                    )}
+                    <div className="flex-1">
+                      <h3 className="text-white font-bold text-lg leading-tight">{scannedProduct.name}</h3>
+                      {scannedProduct.brand && <p className="text-white/60 text-sm mt-1">{scannedProduct.brand}</p>}
+                      {scannedProduct.nutriscore && (
+                        <span className={`inline-block mt-2 px-2 py-0.5 rounded text-xs font-bold text-white ${scannedProduct.nutriscore === 'A' ? 'bg-green-500' : scannedProduct.nutriscore === 'B' ? 'bg-lime-500' : scannedProduct.nutriscore === 'C' ? 'bg-yellow-500' : scannedProduct.nutriscore === 'D' ? 'bg-orange-500' : 'bg-red-500'}`}>Nutri-Score {scannedProduct.nutriscore}</span>
+                      )}
+                    </div>
+                    <div className={`w-16 h-16 rounded-full flex flex-col items-center justify-center border-4 ${scannedProduct.healthColor === 'green' ? 'border-green-400 bg-green-900/30' : scannedProduct.healthColor === 'orange' ? 'border-orange-400 bg-orange-900/30' : 'border-red-400 bg-red-900/30'}`}>
+                      <span className={`text-xl font-black ${scannedProduct.healthColor === 'green' ? 'text-green-400' : scannedProduct.healthColor === 'orange' ? 'text-orange-400' : 'text-red-400'}`}>{scannedProduct.healthScore}</span>
+                      <span className="text-white/60 text-xs">/100</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {[{label:'Kcal',value:scannedProduct.calories,color:'text-orange-400'},{label:'Prot.',value:scannedProduct.protein+'g',color:'text-blue-400'},{label:'Gluc.',value:scannedProduct.carbs+'g',color:'text-yellow-400'},{label:'Lip.',value:scannedProduct.fat+'g',color:'text-pink-400'}].map(m => (
+                      <div key={m.label} className="bg-white/10 rounded-xl p-2 text-center">
+                        <p className={`font-bold text-sm ${m.color}`}>{m.value}</p>
+                        <p className="text-white/50 text-xs">{m.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(scannedProduct.positivePoints?.length || 0) > 0 && (
+                    <div className="mb-3">
+                      {scannedProduct.positivePoints!.map(p => (
+                        <div key={p} className="flex items-center gap-2 text-green-400 text-sm py-1"><Check className="w-4 h-4 flex-shrink-0" /><span>{p}</span></div>
+                      ))}
+                    </div>
+                  )}
+                  {(scannedProduct.negativePoints?.length || 0) > 0 && (
+                    <div className="mb-4">
+                      {scannedProduct.negativePoints!.map(p => (
+                        <div key={p} className="flex items-center gap-2 text-red-400 text-sm py-1"><X className="w-4 h-4 flex-shrink-0" /><span>{p}</span></div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mb-4">
+                    <p className="text-white/60 text-sm mb-2">Type de repas :</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {(['breakfast','lunch','dinner','snack'] as const).map(t => (
+                        <button key={t} onClick={() => setMealType(t)} className={`py-1.5 rounded-xl text-xs font-medium transition-all ${mealType === t ? 'bg-violet-500 text-white' : 'bg-white/10 text-white/60'}`}>
+                          {t === 'breakfast' ? 'Matin' : t === 'lunch' ? 'Midi' : t === 'dinner' ? 'Soir' : 'Snack'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button onClick={addScannedProductToMeals} className="w-full py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-2xl">Ajouter au suivi</button>
+                  <button onClick={() => { setScannedProduct(null); startBarcodeScanner(); }} className="w-full py-2 mt-2 text-white/60 text-sm">Scanner un autre produit</button>
+                </div>
+              </div>
+            )}
+
+            {productError && !scannedProduct && !isLoadingProduct && (
+              <div className="flex-1 flex flex-col items-center justify-center p-6">
+                <p className="text-red-400 text-center mb-4">{productError}</p>
+                <div className="flex gap-3 w-full max-w-xs">
+                  <input value={manualBarcodeInput} onChange={e => setManualBarcodeInput(e.target.value)} placeholder="Saisir code-barres..." className="flex-1 bg-white/10 text-white rounded-xl px-3 py-2 text-sm" />
+                  <button onClick={() => handleBarcodeDetected(manualBarcodeInput)} disabled={!manualBarcodeInput} className="px-3 py-2 bg-violet-500 text-white rounded-xl text-sm disabled:opacity-50">OK</button>
+                </div>
+                <button onClick={() => { setProductError(null); startBarcodeScanner(); }} className="mt-3 text-violet-400 text-sm">Réessayer</button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Camera Overlay */}
       <AnimatePresence>
@@ -907,7 +1124,7 @@ function NutriScanApp() {
                       </p>
                     </div>
                     <div className="bg-white p-4 rounded-3xl border border-zinc-100 shadow-sm">
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Protéines</p>
+                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">ProtÃ©ines</p>
                       <p className="text-2xl font-black text-zinc-900">
                         {currentIngredients.reduce((acc, i) => acc + i.protein, 0)} <span className="text-xs font-normal text-zinc-400">g</span>
                       </p>
@@ -916,7 +1133,7 @@ function NutriScanApp() {
 
                   <div className="space-y-4">
                     <div className="flex justify-between items-center px-1">
-                      <h4 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">Ingrédients</h4>
+                      <h4 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">IngrÃ©dients</h4>
                       <button 
                         onClick={() => setIsAddingIngredient(true)}
                         className="text-zinc-900 flex items-center gap-1 font-bold text-xs"
@@ -977,7 +1194,7 @@ function NutriScanApp() {
               className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-6 shadow-2xl"
             >
               <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-black text-zinc-900">Ajouter un ingrédient</h3>
+                <h3 className="text-2xl font-black text-zinc-900">Ajouter un ingrÃ©dient</h3>
                 <button onClick={() => setIsAddingIngredient(false)} className="text-zinc-300 hover:text-zinc-900">
                   <X size={24} />
                 </button>
@@ -996,7 +1213,7 @@ function NutriScanApp() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Quantité (g)</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">QuantitÃ© (g)</label>
                     <input 
                       type="number" 
                       value={newIngredient.quantity}
@@ -1030,7 +1247,7 @@ function NutriScanApp() {
                 </div>
                 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Qualité nutritionnelle</label>
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">QualitÃ© nutritionnelle</label>
                   <div className="flex gap-2">
                     {(['green', 'orange', 'red'] as const).map(s => (
                       <button 
@@ -1048,7 +1265,7 @@ function NutriScanApp() {
                   onClick={addManualIngredient}
                   className="w-full bg-zinc-900 text-white font-bold py-5 rounded-2xl shadow-xl hover:bg-zinc-800 transition-all"
                 >
-                  Ajouter l'ingrédient
+                  Ajouter l'ingrÃ©dient
                 </button>
               </div>
             </motion.div>
