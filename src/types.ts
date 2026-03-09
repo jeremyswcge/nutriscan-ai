@@ -43,3 +43,25 @@ export interface NutritionAnalysis {
   confidence: number;
   description: string;
 }
+
+export interface ScannedProduct {
+  barcode: string;
+  name: string;
+  brand?: string;
+  imageUrl?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sugar?: number;
+  salt?: number;
+  nutriscore?: string;
+  novaGroup?: number;
+  ingredients?: string;
+  healthScore: number;
+  healthLabel: 'excellent' | 'good' | 'mediocre' | 'poor';
+  healthColor: 'green' | 'orange' | 'red';
+  positivePoints?: string[];
+  negativePoints?: string[];
+}
