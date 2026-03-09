@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply font-sans;
+  }
+}
+
+.bg-pastel-gradient {
+  background: linear-gradient(135deg, #FF9E9E 0%, #A3E4D7 33%, #D7BDE2 66%, #AED6F1 100%);
+  background-attachment: fixed;
+}
+
+.gradient-border {
+  position: relative;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.gradient-border::after {
+  content: '';
+  position: absolute;
+  top: -2px; bottom: -2px;
+  left: -2px; right: -2px;
+  background: linear-gradient(45deg, #FF6B6B, #4ECDC4, #45B7D1);
+  border-radius: inherit;
+  z-index: -1;
+}

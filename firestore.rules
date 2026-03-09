@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (Auth UID)
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string
+    //   - email: string (required)
+    //   - dailyCaloriesGoal: number
+    //   - dailyProteinGoal: number
+    //   - dailyCarbsGoal: number
+    //   - dailyFatGoal: number
+    //   - createdAt: timestamp
+    //
+    // Collection: meals
+    // Document ID: auto-generated
+    // Fields:
+    //   - uid: string (required)
+    //   - name: string (required)
+    //   - calories: number (required)
+    //   - protein: number
+    //   - carbs: number
+    //   - fat: number
+    //   - imageUrl: string
+    //   - timestamp: timestamp (required)
+    //   - type: string (breakfast, lunch, dinner, snack)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string &&
+             (!('dailyCaloriesGoal' in data) || data.dailyCaloriesGoal is number) &&
+             (!('dailyProteinGoal' in data) || data.dailyProteinGoal is number) &&
+             (!('dailyCarbsGoal' in data) || data.dailyCarbsGoal is number) &&
+             (!('dailyFatGoal' in data) || data.dailyFatGoal is number);
+    }
+
+    function isValidMeal(data) {
+      return data.keys().hasAll(['uid', 'name', 'calories', 'timestamp']) &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() < 100 &&
+             data.calories is number && data.calories >= 0 &&
+             data.timestamp is timestamp &&
+             (!('protein' in data) || data.protein is number) &&
+             (!('carbs' in data) || data.carbs is number) &&
+             (!('fat' in data) || data.fat is number);
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      request.resource.data.uid == resource.data.uid;
+    }
+
+    match /meals/{mealId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidMeal(request.resource.data);
+      allow update: if isDocOwner() && isValidMeal(request.resource.data) &&
+                      request.resource.data.uid == resource.data.uid;
+      allow delete: if isDocOwner();
+    }
+  }
+}
