@@ -167,10 +167,10 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 const NutriScoreBadge = ({ score }: { score: number }) => {
   const getScoreInfo = (s: number) => {
-    if (s >= 80) return { label: 'Excellent', color: 'bg-emerald-500', emoji: 'ð¢' };
-    if (s >= 60) return { label: 'Bon', color: 'bg-yellow-400', emoji: 'ð¡' };
-    if (s >= 40) return { label: 'Moyen', color: 'bg-orange-500', emoji: 'ð ' };
-    return { label: 'Mauvais', color: 'bg-red-500', emoji: 'ð´' };
+    if (s >= 80) return { label: 'Excellent', color: 'bg-emerald-500', emoji: '🟢' };
+    if (s >= 60) return { label: 'Bon', color: 'bg-yellow-400', emoji: '🟡' };
+    if (s >= 40) return { label: 'Moyen', color: 'bg-orange-500', emoji: '🟠' };
+    return { label: 'Mauvais', color: 'bg-red-500', emoji: '🔴' };
   };
 
   const info = getScoreInfo(score);
@@ -478,10 +478,10 @@ function NutriScanApp() {
   };
 
   const getScoreTip = (score: number, ingredients: Ingredient[]) => {
-    if (score >= 80) return "Excellent choix ! Ce repas est trÃ¨s Ã©quilibrÃ©.";
-    if (ingredients.some(i => i.score === 'red')) return "Attention aux sucres ou graisses saturÃ©es dÃ©tectÃ©s.";
-    if (score < 40) return "Repas trÃ¨s dÃ©sÃ©quilibrÃ©, essayez d'ajouter des fibres.";
-    return "Bon repas, mais pourrait Ãªtre plus Ã©quilibrÃ©.";
+    if (score >= 80) return "Excellent choix ! Ce repas est très équilibré.";
+    if (ingredients.some(i => i.score === 'red')) return "Attention aux sucres ou graisses saturées détectés.";
+    if (score < 40) return "Repas très déséquilibré, essayez d'ajouter des fibres.";
+    return "Bon repas, mais pourrait être plus équilibré.";
   };
 
   const saveMeal = async () => {
@@ -700,22 +700,22 @@ function NutriScanApp() {
             {/* Macros Grid */}
             <div className="bg-white/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/60 shadow-xl space-y-8">
               <ProgressBar 
-                label="ProtÃ©ines" 
-                emoji="ð¥©"
+                label="Protéines" 
+                emoji="🥩"
                 value={totals.protein} 
                 max={profile?.dailyProteinGoal || 150} 
                 color="bg-gradient-to-r from-emerald-400 to-teal-500" 
               />
               <ProgressBar 
                 label="Glucides" 
-                emoji="ð¾"
+                emoji="🌾"
                 value={totals.carbs} 
                 max={profile?.dailyCarbsGoal || 200} 
                 color="bg-gradient-to-r from-blue-400 to-indigo-500" 
               />
               <ProgressBar 
                 label="Lipides" 
-                emoji="ð§"
+                emoji="💧"
                 value={totals.fat} 
                 max={profile?.dailyFatGoal || 70} 
                 color="bg-gradient-to-r from-amber-400 to-orange-500" 
@@ -725,7 +725,7 @@ function NutriScanApp() {
             {/* Recent Meals */}
             <div className="space-y-4">
               <div className="flex justify-between items-center px-1">
-                <h3 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">Repas rÃ©cents</h3>
+                <h3 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">Repas récents</h3>
                 <button onClick={() => setActiveTab('history')} className="text-zinc-500 hover:text-zinc-900 transition-colors">
                   <ChevronRight size={20} />
                 </button>
@@ -766,7 +766,7 @@ function NutriScanApp() {
               ) : (
                 <div className="py-20 text-center bg-white/40 backdrop-blur-sm border-2 border-dashed border-white/60 rounded-[2.5rem]">
                   <History className="mx-auto text-zinc-300 mb-4" size={48} />
-                  <p className="text-zinc-500 font-bold">Aucun repas enregistrÃ©</p>
+                  <p className="text-zinc-500 font-bold">Aucun repas enregistré</p>
                 </div>
               )}
             </div>
@@ -779,7 +779,7 @@ function NutriScanApp() {
             animate={{ opacity: 1, x: 0 }}
             className="space-y-8"
           >
-            <h3 className="text-3xl font-black text-zinc-900">RÃ©glages</h3>
+            <h3 className="text-3xl font-black text-zinc-900">Réglages</h3>
             
             <div className="bg-white/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/60 shadow-xl space-y-8">
               <div className="flex items-center gap-4">
@@ -803,7 +803,7 @@ function NutriScanApp() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">ProtÃ©ines (g)</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Protéines (g)</label>
                     <input 
                       type="number" 
                       value={profile?.dailyProteinGoal}
@@ -851,22 +851,13 @@ function NutriScanApp() {
                   className="w-full bg-red-50 text-red-500 font-black py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-red-100 transition-all"
                 >
                   <LogOut size={20} />
-                  Se dÃ©connecter
+                  Se déconnecter
                 </button>
               </div>
             </div>
           </motion.div>
         )}
       </main>
-
-      {/* Barcode Scanner Button */}
-      <motion.button
-        whileTap={{ scale: 0.92 }}
-        onClick={startBarcodeScanner}
-        className="fixed bottom-28 left-6 w-14 h-14 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center shadow-lg z-40"
-      >
-        <ScanBarcode className="w-6 h-6" />
-      </motion.button>
 
       {/* Floating Add Button */}
       <button 
@@ -877,7 +868,7 @@ function NutriScanApp() {
       </button>
 
       {/* Navigation Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/40 backdrop-blur-2xl border-t border-white/20 px-8 py-4">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/40 backdrop-blur-2xl border-t border-white/20 px-6 py-4">
         <div className="max-w-lg mx-auto flex justify-between items-center">
           <button 
             onClick={() => setActiveTab('dashboard')}
@@ -885,13 +876,20 @@ function NutriScanApp() {
           >
             <Activity size={24} strokeWidth={activeTab === 'dashboard' ? 3 : 2} />
           </button>
-          
-          <div className="relative -top-10">
+
+          <button
+            onClick={startBarcodeScanner}
+            className="p-2 transition-all text-violet-500 hover:text-violet-700 hover:scale-110 active:scale-95"
+          >
+            <ScanBarcode size={24} />
+          </button>
+
+          <div className="relative -top-8">
             <button 
               onClick={startCamera}
-              className="w-20 h-20 bg-zinc-900 text-white rounded-full flex items-center justify-center shadow-2xl shadow-zinc-400 hover:scale-110 active:scale-95 transition-all border-4 border-white"
+              className="w-16 h-16 bg-zinc-900 text-white rounded-full flex items-center justify-center shadow-2xl shadow-zinc-400 hover:scale-110 active:scale-95 transition-all border-4 border-white"
             >
-              <Camera size={32} />
+              <Camera size={26} />
             </button>
           </div>
 
@@ -1124,7 +1122,7 @@ function NutriScanApp() {
                       </p>
                     </div>
                     <div className="bg-white p-4 rounded-3xl border border-zinc-100 shadow-sm">
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">ProtÃ©ines</p>
+                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Protéines</p>
                       <p className="text-2xl font-black text-zinc-900">
                         {currentIngredients.reduce((acc, i) => acc + i.protein, 0)} <span className="text-xs font-normal text-zinc-400">g</span>
                       </p>
@@ -1133,7 +1131,7 @@ function NutriScanApp() {
 
                   <div className="space-y-4">
                     <div className="flex justify-between items-center px-1">
-                      <h4 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">IngrÃ©dients</h4>
+                      <h4 className="font-black text-zinc-900 uppercase tracking-widest text-[10px]">Ingrédients</h4>
                       <button 
                         onClick={() => setIsAddingIngredient(true)}
                         className="text-zinc-900 flex items-center gap-1 font-bold text-xs"
@@ -1194,7 +1192,7 @@ function NutriScanApp() {
               className="bg-white w-full max-w-md rounded-[2.5rem] p-8 space-y-6 shadow-2xl"
             >
               <div className="flex justify-between items-center">
-                <h3 className="text-2xl font-black text-zinc-900">Ajouter un ingrÃ©dient</h3>
+                <h3 className="text-2xl font-black text-zinc-900">Ajouter un ingrédient</h3>
                 <button onClick={() => setIsAddingIngredient(false)} className="text-zinc-300 hover:text-zinc-900">
                   <X size={24} />
                 </button>
@@ -1213,7 +1211,7 @@ function NutriScanApp() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">QuantitÃ© (g)</label>
+                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Quantité (g)</label>
                     <input 
                       type="number" 
                       value={newIngredient.quantity}
@@ -1247,7 +1245,7 @@ function NutriScanApp() {
                 </div>
                 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">QualitÃ© nutritionnelle</label>
+                  <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Qualité nutritionnelle</label>
                   <div className="flex gap-2">
                     {(['green', 'orange', 'red'] as const).map(s => (
                       <button 
@@ -1265,7 +1263,7 @@ function NutriScanApp() {
                   onClick={addManualIngredient}
                   className="w-full bg-zinc-900 text-white font-bold py-5 rounded-2xl shadow-xl hover:bg-zinc-800 transition-all"
                 >
-                  Ajouter l'ingrÃ©dient
+                  Ajouter l'ingrédient
                 </button>
               </div>
             </motion.div>
